@@ -46,9 +46,6 @@ jobs:
         env:
           BUILD_ENV: production
         run: |
-          # Temporarily move it out of the public dir to keep it out of the Cloudflare bundle
-          # (it's too big, we upload it to R2 but include it in the docker image)
-          mv --verbose ./public/search_index.json .
           npm run astrobuild
 
 
@@ -59,33 +56,6 @@ jobs:
           zip --recurse-paths -9 --quiet build_cache.zip ./build/cache &
           wait
 
-      - name: Upload storage assets
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: |
-          (npx wrangler r2 object put gmodwiki/public_cache.zip --file ./public_cache.zip && rm -v public_cache.zip) &
-          (npx wrangler r2 object put gmodwiki/build_cache.zip --file ./build_cache.zip && rm -v build_cache.zip) &
-          (npx wrangler r2 object put gmodwiki/search_index.json --file ./search_index.json && mv ./search_index.json ./public/) &
-          wait
-
-
-      # CF Publish
-      - name: Publish Site
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-        run: |
-          npx wrangler pages deploy --project-name=gmodwiki ./dist
-
-      - name: Clear CF Cache
-        env:
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
-          CLOUDFLARE_CACHE_API_KEY: ${{ secrets.CF_CACHE_API_TOKEN }}
-        run: |
-          npm run clear_cloudflare_cache
-          rm deleted_files.json
-
 
       # Docker
       - name: Login to GitHub Container Registry
@@ -93,13 +63,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.GH_TOKEN }}
-
-      - name: Login to Dockerhub
-        uses: docker/login-action@v3
-        with:
-          username: brandonsturgeon
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build & Push Docker Image
         if: ${{ (github.event_name == 'schedule' && (format('{{date:u}}')) == '1') || (github.event_name == 'workflow_dispatch' && github.event.inputs.build_container == 'true') }}
@@ -107,5 +71,4 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/cfc-servers/gmodwiki:latest
-            brandonsturgeon/gmodwiki:latest
+            ghcr.io/equoo/gmodwiki:latest
